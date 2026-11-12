@@ -1,4 +1,5 @@
 using System;
+using System.Collections;
 using UnityEngine;
 using UnityEngine.InputSystem;
 
@@ -20,14 +21,18 @@ public class PlayerPhysics : MonoBehaviour
     [SerializeField] Rigidbody2D rigidBody2D;
     [SerializeField] float jumpSpeed;
     [SerializeField] float hurtJumpSpeed;
+    [SerializeField] float hurtRecoveryDelay = 0.15f;
+
     [Header("Grounded")]
     [SerializeField] Vector2 groundCheckOffset;
     [SerializeField] Vector2 groundCheckSize;
     [SerializeField] LayerMask groundMask;
+
     [Header("Inputs")]
     [SerializeField] InputActionReference moveInput;
     [SerializeField] InputActionReference jumpInput;
     [SerializeField] InputActionReference fireInput;
+
     [Header("Bullet")]
     [SerializeField] Transform bulletSpawner;
     [SerializeField] Bullet bulletPrefab;
@@ -39,8 +44,13 @@ public class PlayerPhysics : MonoBehaviour
     float initialGravity;
     bool isGrounded;
     bool canJump;
+    bool canCheckGround = true;
     int direction;
     Vector2 bulletSpawnerInitialPosition;
+
+    // Cache de yield para Coroutine (Clase 9)
+    WaitForSeconds hurtWait;
+    Coroutine hurtCoroutine;
 
     StateMachine stateMachine;
     State idleState;
@@ -49,11 +59,14 @@ public class PlayerPhysics : MonoBehaviour
     State firingState;
     State hurtState;
 
+    public int Direction => direction;
+
     void Awake()
     {
         initialGravity = rigidBody2D.gravityScale;
         direction = 1;
         bulletSpawnerInitialPosition = bulletSpawner.localPosition;
+        hurtWait = new WaitForSeconds(hurtRecoveryDelay);
 
         idleState = CreateState(PlayerState.Idle, IdleEnter, IdleUpdate, IdleExit);
         movementState = CreateState(PlayerState.GroundedMovement, MovementEnter, MovementUpdate, MovementExit);
@@ -96,6 +109,8 @@ public class PlayerPhysics : MonoBehaviour
 
     public void Hurt(Vector2 knockback)
     {
+        if (stateMachine.CurrentState == PlayerState.Hurt.ToString()) return;
+
         knockbackVelocity = knockback;
         ChangeState(PlayerState.Hurt);
     }
@@ -103,9 +118,7 @@ public class PlayerPhysics : MonoBehaviour
     void IdleEnter()
     {
         moveInput.action.started += StartMoveHandler;
-
         jumpInput.action.started += JumpStartedHandler;
-
         fireInput.action.started += BulletFiredHandler;
     }
 
@@ -114,7 +127,6 @@ public class PlayerPhysics : MonoBehaviour
         horizontalSpeed = 0.0f;
         velocity = Vector2.zero;
 
-        // The move key may already be held when we arrive here (after landing or firing)
         Vector2 moveVector = moveInput.action.ReadValue<Vector2>();
         if (moveVector.x != 0.0f)
         {
@@ -125,9 +137,7 @@ public class PlayerPhysics : MonoBehaviour
     void IdleExit()
     {
         moveInput.action.started -= StartMoveHandler;
-
         jumpInput.action.started -= JumpStartedHandler;
-
         fireInput.action.started -= BulletFiredHandler;
     }
 
@@ -135,8 +145,8 @@ public class PlayerPhysics : MonoBehaviour
     {
         moveInput.action.performed += PerformedMoveHandler;
         moveInput.action.canceled += CanceledMoveHandler;
-
         jumpInput.action.started += JumpStartedHandler;
+        fireInput.action.started += BulletFiredHandler;
 
         ReadMoveInput();
     }
@@ -150,15 +160,14 @@ public class PlayerPhysics : MonoBehaviour
     {
         moveInput.action.performed -= PerformedMoveHandler;
         moveInput.action.canceled -= CanceledMoveHandler;
-
         jumpInput.action.started -= JumpStartedHandler;
+        fireInput.action.started -= BulletFiredHandler;
     }
 
     void JumpEnter()
     {
         moveInput.action.performed += PerformedMoveHandler;
         moveInput.action.canceled += CanceledMoveHandler;
-
         jumpInput.action.canceled += JumpReleasedHandler;
 
         ReadMoveInput();
@@ -175,7 +184,6 @@ public class PlayerPhysics : MonoBehaviour
     {
         moveInput.action.performed -= PerformedMoveHandler;
         moveInput.action.canceled -= CanceledMoveHandler;
-
         jumpInput.action.canceled -= JumpReleasedHandler;
 
         velocity.y = 0.0f;
@@ -196,14 +204,29 @@ public class PlayerPhysics : MonoBehaviour
     {
         horizontalSpeed = 0.0f;
         velocity = knockbackVelocity;
-        velocity.y += hurtJumpSpeed;
+        velocity.y = hurtJumpSpeed;
         canJump = true;
+        isGrounded = false;
+
+        if (hurtCoroutine != null)
+        {
+            StopCoroutine(hurtCoroutine);
+        }
+        hurtCoroutine = StartCoroutine(HurtRecoveryRoutine());
     }
 
     void HurtExit()
     {
         velocity = Vector2.zero;
         canJump = false;
+        canCheckGround = true;
+    }
+
+    IEnumerator HurtRecoveryRoutine()
+    {
+        canCheckGround = false;
+        yield return hurtWait;
+        canCheckGround = true;
     }
 
     void ReadMoveInput()
@@ -298,21 +321,28 @@ public class PlayerPhysics : MonoBehaviour
 
     void CheckGround()
     {
+        if (!canCheckGround) return;
+
         Collider2D colliderDetected = Physics2D.OverlapBox(
             rigidBody2D.position + groundCheckOffset,
             groundCheckSize,
             0.0f,
             groundMask);
+
         bool currentGroundedState = colliderDetected != null;
+
         if (currentGroundedState && !isGrounded)
         {
             ChangeState(PlayerState.Idle);
         }
+
         isGrounded = currentGroundedState;
     }
 
     void OnDrawGizmosSelected()
     {
+        if (rigidBody2D == null) return;
+
         Gizmos.color = Color.red;
         Gizmos.DrawWireCube(
             rigidBody2D.position + groundCheckOffset,
