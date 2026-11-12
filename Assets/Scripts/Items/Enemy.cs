@@ -8,6 +8,7 @@ public class Enemy : MonoBehaviour, IDamagable
     [SerializeField] float flashWait;
     [SerializeField] int flashTimes;
 
+    Coroutine flashCoroutine;
     WaitForSeconds flashWaitTimer;
     WaitForSeconds FlashWaitTimer
     {
@@ -29,7 +30,14 @@ public class Enemy : MonoBehaviour, IDamagable
 
     public void Damage(int direction)
     {
-        FlashDamage();
+        // Si ya estaba parpadeando, detenemos la coroutine anterior para reiniciar el efecto
+        if (flashCoroutine != null)
+        {
+            StopCoroutine(flashCoroutine);
+        }
+
+        // Es obligatorio usar StartCoroutine para ejecutar un IEnumerator
+        flashCoroutine = StartCoroutine(FlashDamage());
     }
 
     IEnumerator FlashDamage()
