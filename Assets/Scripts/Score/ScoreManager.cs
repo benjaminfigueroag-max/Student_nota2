@@ -10,7 +10,7 @@ public class ScoreManager : MonoBehaviour
     {
         itemValues = new Dictionary<string, int>();
         itemValues.Add("Key", 1);
-        itemValues.Add("gem", 3);
+        itemValues.Add("Gem", 3);
     }
 
     void OnEnable()
