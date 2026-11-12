@@ -12,8 +12,8 @@ public class Gem : MonoBehaviour, IDamagable
     {
         if (indexColor >= colors.Count)
         {
-            Destroy(gameObject);
             GameEvents.TargetDestroyed(GameItem.Gem);
+            Destroy(gameObject);
             return;
         }
 
